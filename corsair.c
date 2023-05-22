@@ -18,6 +18,8 @@ typedef struct s_rsa
     BIGNUM *p; // first prime
     BIGNUM *q; // second prime
     BIGNUM *d; // private
+    BIGNUM *pMinusOne; // p - 1
+    BIGNUM *qMinusOne; // q - 1
 } t_rsa;
 
 void store_n_e(char *keyfile, t_rsa *trsa)
@@ -48,44 +50,57 @@ void store_n_e(char *keyfile, t_rsa *trsa)
     // const BIGNUM *RSA_get0_n(const RSA *d);
     // const BIGNUM *RSA_get0_e(const RSA *d);
 
+    // https://linux.die.net/man/3/bn_dup
     // Extract the modulus and exponent from the RSA key
-    trsa->n = RSA_get0_n(rsa);
-    trsa->e = RSA_get0_e(rsa);
+    trsa->n = BN_dup(RSA_get0_n(rsa));
+    trsa->e = BN_dup(RSA_get0_e(rsa));
     // https://www.openssl.org/docs/man1.0.2/man3/bn.html
     //  int BN_print_fp(FILE *fp, const BIGNUM *a);
-    printf("\33[32mmodulus :\33[0m\n");
-    BN_print_fp(stdout,trsa->n);
-    printf("\n");
-    printf("\33[32mexponent :\33[0m\n");
-    BN_print_fp(stdout,trsa->e);
-    printf("\n");
-    // RSA_free(rsa);
+    RSA_free(rsa);
 }
 
 int main(int ac, char **av)
 {
+    if (ac != 5) {
+        printf("Usage : ./corsair <pubCert1>.pem <pubCert2>.pem <msg1>.bin <msg2.bin>");
+        return 1;
+    }
     t_rsa *key1;
     t_rsa *key2;
-    BIGNUM *gcd = BN_new();
-    // BIGNUM *mod_ing = BN_new();
-    BIGNUM *one;
+    BIGNUM *commonPrime = BN_new();
+    BIGNUM *mod_inv1 = BN_new();
+    BIGNUM *mod_inv2 = BN_new();
+    BIGNUM *one = BN_new();
+    BIGNUM *phi1 = BN_new();
+    BIGNUM *phi2 = BN_new();
 
-    if (BN_dec2bn(&one,"16") == 0)
+    if (BN_dec2bn(&one,"1") == 0)
     {
         printf("BN_dec2bn failed to convert 1 to BN");
         exit(1);
     }
     BN_print_fp(stdout,one);
-    if (ac != 5) {
-        printf("Usage : ./corsair <pubCert1>.pem <pubCert2>.pem <msg1>.bin <msg2.bin>");
-        return 1;
-    }
     key1 = malloc(sizeof(t_rsa));
     key2 = malloc(sizeof(t_rsa));
+    // For the 'q' I use commonPrime for both, so no need to allocate, and for the 'n' and 'e' they get allocated by BN_dup(); inside store_n_e(); 
+    key1->p = BN_new();
+    key1->d = BN_new();
+    key1->pMinusOne = BN_new();
+    key1->qMinusOne = BN_new();
 
+    key2->p = BN_new();
+    key2->d = BN_new();
+    key2->pMinusOne = BN_new();
+    key2->qMinusOne = BN_new();
     store_n_e(av[1],key1);
     store_n_e(av[2],key2);
 
+    printf("\33[32mmodulus :\33[0m\n");
+    BN_print_fp(stdout,key1->n);
+    printf("\n");
+    printf("\33[32mexponent :\33[0m\n");
+    BN_print_fp(stdout,key1->e);
+    printf("\n");
 
     // https://www.openssl.org/docs/man3.0/man3/BN_gcd.html
     // int BN_gcd(BIGNUM *r, BIGNUM *a, BIGNUM *b, BN_CTX *ctx); // calculates gcd(a,b), places the result in r
@@ -93,24 +108,47 @@ int main(int ac, char **av)
     // BN_CTX *BN_CTX_new(void);
     BN_CTX *tmp = BN_CTX_new();
 
-    BN_gcd(gcd,key1->n,key2->n,tmp);
-    BN_print_fp(stdout,gcd);
+    BN_gcd(commonPrime,key1->n,key2->n,tmp);
+    BN_print_fp(stdout,commonPrime);
     
     // https://www.openssl.org/docs/man3.0/man3/BN_cmp.html
     // int BN_cmp(const BIGNUM *a, const BIGNUM *b);
-    if (BN_cmp(gcd,one) == 1)
-        printf("GOTCHAAAA");
+    if (BN_cmp(commonPrime,one) == 1)
+        printf("\33[92m\nFound a prime in common.\33[0m\n");
     else{
-        printf("No primes in common, my job here is done, Bye ! :)");
+        printf("No primes in common, my job here is done, Bye ! :)\n");
         // Clean up
         return 0;
     }
-    
+    // int BN_div(BIGNUM *dv, BIGNUM *rem, const BIGNUM *a, const BIGNUM *d, BN_CTX *ctx);
+    BN_div(key1->p,NULL,key1->n,commonPrime,tmp);
+    BN_div(key2->p,NULL,key2->n,commonPrime,tmp);
+
+    // int BN_sub(BIGNUM *r, const BIGNUM *a, const BIGNUM *b);
+    BN_sub(key1->pMinusOne,key1->p,one);
+    BN_sub(key1->qMinusOne,commonPrime,one);
+
+    BN_sub(key2->pMinusOne,key2->p,one);
+    BN_sub(key2->qMinusOne,commonPrime,one);
+
+    // int BN_mul(BIGNUM *r, BIGNUM *a, BIGNUM *b, BN_CTX *ctx);
+    BN_mul(phi1,key1->pMinusOne,key1->qMinusOne,tmp);
+    BN_mul(phi2,key2->pMinusOne,key2->qMinusOne,tmp);
 
     // https://www.openssl.org/docs/man3.1/man3/BN_mod_inverse.html
     // BIGNUM *BN_mod_inverse(BIGNUM *r, BIGNUM *a, const BIGNUM *n, BN_CTX *ctx);
 
-    // BN_mod_inverse()
+    BN_mod_inverse(mod_inv1,key1->e,phi1,tmp);
+    BN_mod_inverse(mod_inv2,key2->e,phi2,tmp);
+    BN_print_fp(stdout,mod_inv1);
+    printf("\n");
+    BN_print_fp(stdout,mod_inv2);
+
+
+
+    // int PEM_write_bio_PrivateKey(BIO *bp, const EVP_PKEY *x, const EVP_CIPHER *enc,
+        // unsigned char *kstr, int klen, pem_password_cb *cb, void *u);
+    
 
     // Clean up
     free(key1);
