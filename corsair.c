@@ -204,6 +204,7 @@ int main(int ac, char **av)
         exit(1);
     }
     int len1 = read(fd,from,1024);
+    close(fd);
     // int RSA_private_decrypt(int flen, unsigned char *from, unsigned char *to, RSA *rsa, int padding);
     RSA_private_decrypt(len1,from,to,privateKey1,RSA_PKCS1_PADDING);
     printf("\n\33[94mDecrypted msg :\33[0m %s",to);
@@ -214,7 +215,7 @@ int main(int ac, char **av)
         exit(1);
     }
     len1 = read(fd,from,1024);
-
+    close(fd);
     RSA_private_decrypt(len1,from,to,privateKey2,RSA_PKCS1_PADDING);
     printf("\33[94mDecrypted msg :\33[0m %s",to);
 
