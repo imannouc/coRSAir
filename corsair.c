@@ -122,7 +122,6 @@ int main(int ac, char **av)
     store_n_e(av[1],key1);
     store_n_e(av[2],key2);
 
-
     // https://www.openssl.org/docs/man3.0/man3/BN_gcd.html
     // int BN_gcd(BIGNUM *r, BIGNUM *a, BIGNUM *b, BN_CTX *ctx); // calculates gcd(a,b), places the result in r
     // the fourth argument is a temporary struct used by BN to avoid repeated expense mem allocs
@@ -130,16 +129,43 @@ int main(int ac, char **av)
     BN_CTX *tmp = BN_CTX_new();
 
     BN_gcd(commonPrime,key1->n,key2->n,tmp);
-    BN_print_fp(stdout,commonPrime);
     
     // https://www.openssl.org/docs/man3.0/man3/BN_cmp.html
     // int BN_cmp(const BIGNUM *a, const BIGNUM *b);
     if (BN_cmp(commonPrime,one) == 1)
-        printf("\33[92m\nFound a prime in common.\33[0m\n");
-    else{
+    {
+        printf("\33[92m\nPrime in common :\33[0m\n");
+        BN_print_fp(stdout,commonPrime);
+    }
+    else
+    {
         printf("No primes in common, my job here is done, Bye ! :)\n");
-        // Clean up
-        return 0;
+
+        BN_free(key1->p);
+        BN_free(key1->q);
+        BN_free(key1->e);
+        BN_free(key1->n);
+        BN_free(key1->pMinusOne);
+        BN_free(key1->qMinusOne);
+        BN_free(key1->d);
+        BN_free(phi1);
+
+
+        BN_free(key2->p);
+        BN_free(key2->q);
+        BN_free(key2->e);
+        BN_free(key2->n);
+        BN_free(key2->pMinusOne);
+        BN_free(key2->qMinusOne);
+        BN_free(key2->d);
+        BN_free(phi2);
+
+        BN_CTX_free(tmp);
+        BN_free(one);
+        BN_free(commonPrime);
+        free(key1);
+        free(key2);
+        exit(1);
     }
     // int BN_div(BIGNUM *dv, BIGNUM *rem, const BIGNUM *a, const BIGNUM *d, BN_CTX *ctx);
     BN_div(key1->p,NULL,key1->n,commonPrime,tmp);
@@ -161,9 +187,9 @@ int main(int ac, char **av)
 
     BN_mod_inverse(key1->d,key1->e,phi1,tmp);
     BN_mod_inverse(key2->d,key2->e,phi2,tmp);
-    BN_print_fp(stdout,key1->d);
-    printf("\n");
-    BN_print_fp(stdout,key2->d);
+    // BN_print_fp(stdout,key1->d);
+    // printf("\n");
+    // BN_print_fp(stdout,key2->d);
 
 
     BIGNUM *c2 = BN_dup(commonPrime);
@@ -180,7 +206,7 @@ int main(int ac, char **av)
     int len1 = read(fd,from,1024);
     // int RSA_private_decrypt(int flen, unsigned char *from, unsigned char *to, RSA *rsa, int padding);
     RSA_private_decrypt(len1,from,to,privateKey1,RSA_PKCS1_PADDING);
-    printf("\n\33[3mDecrypted msg :\33[0m %s",to);
+    printf("\n\33[94mDecrypted msg :\33[0m %s",to);
 
     fd = open(av[4],O_RDONLY);
     if (fd < 0){
@@ -190,26 +216,24 @@ int main(int ac, char **av)
     len1 = read(fd,from,1024);
 
     RSA_private_decrypt(len1,from,to,privateKey2,RSA_PKCS1_PADDING);
-    printf("\n\33[3mDecrypted msg :\33[0m %s",to);
+    printf("\33[94mDecrypted msg :\33[0m %s",to);
 
     // Clean up
-    free(key1);
-    free(key2);
     RSA_free(privateKey1);
     RSA_free(privateKey2);
 
     BN_free(key1->pMinusOne);
     BN_free(key1->qMinusOne);
-    // BN_free(key1->d);
     BN_free(phi1);
 
 
     BN_free(key2->pMinusOne);
     BN_free(key2->qMinusOne);
-    // BN_free(key2->d);
     BN_free(phi2);
 
     BN_CTX_free(tmp);
     BN_free(one);
+    free(key1);
+    free(key2);
     return 0;
 }
